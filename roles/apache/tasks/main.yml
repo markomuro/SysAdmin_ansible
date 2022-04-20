@@ -1,0 +1,269 @@
+- name: install apache
+  dnf:
+    name: httpd
+    state: latest
+
+
+- name: Configure main apache httpd.conf to add forensic module
+  lineinfile:
+    path: /etc/httpd/conf/httpd.conf
+    line: "LoadModule log_forensic_module modules/mod_log_forensic.so"
+    state: present
+
+- name: enable and start apache
+  systemd:
+    name: httpd
+    state: started
+    enabled: yes
+
+
+- name: open port 80 tcp
+  firewalld:
+    port: 80/tcp
+    permanent: true
+    state: enabled
+    immediate: yes
+
+- name: create virtual host webroot directory
+  file:
+    path: /var/www/html/www.{{ hostname }}/public_html
+    state: directory
+    modification_time: preserve
+    access_time: preserve
+
+- name: create access log file for www
+  file:
+    path: /var/log/httpd/access_log
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+- name: create error log file for www
+  file:
+    path: /var/log/httpd/error_log
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+    
+- name: create conf file for webroot
+  template:
+    src: webrootconf.j2
+    dest: /etc/httpd/conf.d/www.{{ hostname }}.conf
+
+- name: create index.html file
+  template:
+    src: index.j2
+    dest: /var/www/html/www.B55709/public_html/index.html
+
+- name: install PIP
+  dnf:
+    name: python3-pip
+    state: latest
+
+- name: install Flask libraries
+  pip:
+    name: flask
+
+- name: Add user proxy as Linux user
+  user:
+    name: proxy
+
+- name: create Python server file for proxy service
+  template:
+    src: server.j2
+    dest: /usr/local/lib/server.py
+    owner: proxy
+    group: proxy
+    
+- name: Seboolean | this equates to 'setsebool -P httpd_can_network_connect=1'
+  seboolean:
+    name: httpd_can_network_connect
+    state: yes
+    persistent: yes
+
+- name: add CNAMES for www, proxy, wordpress
+  template:
+    src: cnames.j2
+    dest: /etc/named/{{ hostname }}.{{ domain_name }}
+
+- name: reload named service
+  systemd:
+    daemon_reload: yes
+    name: named
+    state: restarted
+
+- name: create access log file for proxy
+  file:
+    path: /var/log/httpd/proxy-access_log
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+- name: create error log file for proxy
+  file:
+    path: /var/log/httpd/proxy-error_log
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+
+- name: create conf file for proxy
+  template:
+    src: proxyconf.j2
+    dest: /etc/httpd/conf.d/proxy.{{ hostname }}.conf
+
+- name: create proxy service file
+  template:
+    src: proxyservice.j2
+    dest: /etc/systemd/system/proxy.service
+
+- name: start proxy service and enable
+  systemd:
+    daemon_reload: yes
+    name: proxy
+    state: started
+    enabled: yes
+
+- name: restart httpd
+  systemd:
+    daemon_reload: yes
+    name: httpd
+    state: restarted
+
+- name: Install php-mysqlnd php-fpm mariadb-server httpd tar curl php-json
+  dnf:
+    name:
+      - php-mysqlnd
+      - php-fpm
+      - mariadb-server
+      - httpd
+      - tar
+      - curl
+      - php-json
+
+- name: start and enable mariadb
+  systemd:
+    name: mariadb
+    state: started
+    enabled: yes
+
+- name: install PyMysql
+  pip:
+    name: PyMySQL
+
+- name: Removes all anonymous user accounts from sql database
+  community.mysql.mysql_user:
+    check_implicit_admin: yes
+    login_user: root
+    login_password: "{{ mariadb_root_pasw }}"
+    name: ''
+    host: localhost
+    state: absent
+
+- name: Create a new database with name 'bobdata'
+  community.mysql.mysql_db:
+    check_implicit_admin: yes
+    login_user: root
+    login_password: "{{ mariadb_root_pasw }}"
+    name: bobdata
+    state: present
+
+- name: Add new database user name with access to bobdata db
+  community.mysql.mysql_user:
+    check_implicit_admin: yes
+    login_user: root
+    login_password: "{{ mariadb_root_pasw }}"
+    state: present
+    name: user
+    password: 12345
+    priv: 
+      'bobdata.*': 'ALL,GRANT'
+    append_privs: yes
+
+- name: Unarchive a file that needs to be downloaded (added in 2.0)
+  ansible.builtin.unarchive:
+    src: https://wordpress.org/latest.tar.gz
+    dest: /var/www/html/
+    remote_src: yes
+
+- name: change wordpress folder owner settings to apache
+  file:
+    path: /var/www/html/wordpress
+    owner: apache
+    group: apache
+    recurse: yes
+
+- name: Sefcontext | this equates to 'chcon -t httpd_sys_rw_content_t /var/www/html/wordpress -R'
+  sefcontext:
+    target: '/var/www/html/wordpress(/.*)?'
+    setype: httpd_sys_rw_content_t
+    state: present
+
+- name: create access log file for wordpress
+  file:
+    path: /var/log/httpd/wordpress-access_log
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+- name: creates error log file for wordpress
+  file:
+    path: /var/log/httpd/wordpress-error_log
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+- name: create php-errors log file for wordpress
+  file:
+    path: /var/log/httpd/php-errors.log
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+- name: create www-php-errors log for wordpress
+  file:
+    path: /var/log/httpd/www-php-errors.log
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+- name : redirect php-fpm error log files
+  lineinfile:
+    path: /etc/php-fpm.d/www.conf
+    search_string: 'php_admin_value[error_log]'
+    line: php_admin_value[error_log] = /var/log/httpd/www-php-errors.log
+
+- name : redirect php-fpm error log files
+  lineinfile:
+    path: /etc/php-fpm.conf
+    search_string: 'error_log'
+    line: error_log = /var/log/httpd/php-errors.log
+
+- name: create virtual host pointing at wordpress
+  template:
+    src: wordpressconf.j2
+    dest: /etc/httpd/conf.d/wordpress.conf
+
+- name: enable and start php-fpm
+  systemd:
+    name: php-fpm
+    state: started
+    enabled: yes
+
+
+- name: restart httpd
+  systemd:
+    daemon_reload: yes
+    name: httpd
+    state: restarted
+    enabled: yes
+
+- name: install modsecurity
+  dnf:
+    name: mod_security
+
+- name: edit modsecurity local rules conf file
+  template:
+    src: modsec_rules.j2
+    dest: /etc/httpd/modsecurity.d/local_rules/modsecurity_localrules.conf
+

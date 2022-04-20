@@ -1,0 +1,25 @@
+<VirtualHost *:80>
+        ServerName wordpress.{{ hostname }}.{{ domain_name }}
+        DocumentRoot /var/www/html/wordpress
+        # Possible values include: debug, info, notice, warn, error, crit, alert, emerg.
+        LogLevel debug
+
+        ErrorLog /var/log/httpd/wordpress-error_log
+        CustomLog /var/log/httpd/wordpress-access_log combined
+        ForensicLog /var/log/httpd/wordpress.{{ hostname }}-forensic.log
+</VirtualHost>
+
+<VirtualHost *:443>
+        ServerName wordpress.{{ hostname }}.{{ domain_name }}
+        DocumentRoot /var/www/html/wordpress
+        # Possible values include: debug, info, notice, warn, error, crit, alert, emerg.
+        LogLevel debug
+	SSLCertificateFile /etc/pki/tls/certs/wordpress_server.crt
+        SSLCertificateKeyFile /etc/pki/tls/private/wordpress_server.key
+        SSLCACertificateFile /etc/pki/tls/certs/cacert.crt
+
+        ErrorLog /var/log/httpd/wordpress-error_log
+        CustomLog /var/log/httpd/wordpress-access_log combined
+        ForensicLog /var/log/httpd/wordpress.{{ hostname }}-forensic.log
+</VirtualHost>
+

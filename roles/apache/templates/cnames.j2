@@ -1,0 +1,17 @@
+;
+; BIND data file for local zone B55709.sa.cs.ut.ee;
+
+$TTL    15M
+@       IN      SOA     ns1.B55709.sa.cs.ut.ee. root.B55709.sa.cs.ut.ee. (
+                     2012020205         ; Serial
+                            15M         ; Refresh
+                             5M         ; Retry
+                           120M         ; Expire
+                            600 )       ; Negative Cache TTL
+@              IN      NS      ns1
+@              IN      A       172.17.88.149
+ns1            IN      A       172.17.88.149
+B55709         IN      A       172.17.88.149
+www            IN      CNAME   B55709.sa.cs.ut.ee.
+proxy          IN      CNAME   B55709.sa.cs.ut.ee.
+wordpress      IN      CNAME   B55709.sa.cs.ut.ee.

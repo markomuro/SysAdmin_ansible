@@ -1,0 +1,29 @@
+<VirtualHost *:80>
+        ServerName proxy.{{ hostname }}.{{ domain_name }}
+        # ServerName sets the name to listen for with requests
+        ErrorLog /var/log/httpd/proxy-error_log
+        CustomLog /var/log/httpd/proxy-access_log common
+        ForensicLog /var/log/httpd/proxy.{{ hostname }}-forensic.log
+
+        ProxyPreserveHost On
+
+        ProxyPass / http://localhost:5000/
+        ProxyPassReverse / http://localhost:5000/
+</VirtualHost>
+
+<VirtualHost *:443>
+        ServerName proxy.{{ hostname }}.{{ domain_name }}
+	SSLCertificateFile /etc/pki/tls/certs/proxy_server.crt
+        SSLCertificateKeyFile /etc/pki/tls/private/proxy_server.key
+        SSLCACertificateFile /etc/pki/tls/certs/cacert.crt
+        # ServerName sets the name to listen for with requests
+        ErrorLog /var/log/httpd/proxy-error_log
+        CustomLog /var/log/httpd/proxy-access_log common
+        ForensicLog /var/log/httpd/proxy.{{ hostname }}-forensic.log
+
+        ProxyPreserveHost On
+
+        ProxyPass / http://localhost:5000/
+        ProxyPassReverse / http://localhost:5000/
+</VirtualHost>
+

@@ -1,0 +1,200 @@
+  - name: Upgrade all packages
+    dnf:
+      name: "*"
+      state: latest
+
+  - name: DNS | Autoremove unneeded packages installed as dependencies
+    dnf:
+      autoremove: yes
+
+  - name: open DNS service
+    firewalld:
+      service: dns
+      permanent: true
+      state: enabled
+      immediate: yes
+
+  - name: open port 53 udp
+    firewalld:
+      port: 53/udp
+      permanent: true
+      state: enabled
+      immediate: yes
+
+  - name: open port 53 tcp
+    firewalld:
+      port: 53/tcp
+      permanent: true
+      state: enabled
+      immediate: yes
+
+  - name: open port 8301 udp
+    firewalld:
+      port: 8301/udp
+      permanent: true
+      state: enabled
+      immediate: yes
+
+  - name: open port 8301 tcp
+    firewalld:
+      port: 8301/tcp
+      permanent: true
+      state: enabled
+      immediate: yes
+
+  - name: Disable IPv6
+    copy:
+      src: 70-ipv6.conf
+      dest: /etc/sysctl.d/70-ipv6.conf
+      owner: root
+      group: root
+      mode: '0644'
+  
+  - name: Change net.ipv6.conf.default.disable_ipv6 to 1.
+    sysctl:
+      name: net.ipv6.conf.default.disable_ipv6
+      value: '1'
+      sysctl_file: /etc/sysctl.d/70-ipv6.conf
+      reload: yes
+
+  - name: Change net.ipv6.conf.all.disable_ipv6 to 1.
+    sysctl:
+      name: net.ipv6.conf.all.disable_ipv6
+      value: '1'
+      sysctl_file: /etc/sysctl.d/70-ipv6.conf
+      reload: yes
+
+  - name: Inserts into hostname
+    template:
+      src: hostname.j2
+      dest: /etc/hostname
+      owner: root
+      group: root
+      mode: '0644'
+
+  - name: Inserts into hosts
+    template:
+      src: hosts.j2
+      dest: /etc/hosts
+      owner: root
+      group: root
+      mode: '0644'
+
+  - name: install bind and bind-utils
+    command: yum install bind bind-utils -y
+
+  - name: Create a directory 'log' if it does not exist
+    file:
+      path: /var/named/log
+      state: directory
+      owner: named
+      group: named
+
+  - name: Create a file default if it does not exist
+    file:
+      path: /var/named/log/default
+      state: touch
+      owner: named
+      group: named
+      modification_time: preserve
+      access_time: preserve
+
+  - name: Create a file auth_servers if it does not exist
+    file:
+      path: /var/named/log/auth_servers
+      state: touch
+      owner: named
+      group: named
+      modification_time: preserve
+      access_time: preserve
+
+  - name: Create a file zone_transfers if it does not exist
+    file:
+      path: /var/named/log/zone_transfers
+      state: touch
+      owner: named
+      group: named
+      modification_time: preserve
+      access_time: preserve
+
+  - name: Create a file client_security if it does not exist
+    file:
+      path: /var/named/log/client_security
+      state: touch
+      owner: named
+      group: named
+      modification_time: preserve
+      access_time: preserve
+
+  - name: Create a file queries if it does not exist
+    file:
+      path: /var/named/log/queries
+      state: touch
+      owner: named
+      group: named
+      modification_time: preserve
+      access_time: preserve
+
+  - name: Create a file query_errors if it does not exist
+    file:
+      path: /var/named/log/query_errors
+      state: touch
+      owner: named
+      group: named
+      modification_time: preserve
+      access_time: preserve
+
+  - name: edit etc/named.conf file
+    template:
+      src: named.j2
+      dest: /etc/named.conf
+      owner: root
+      group: named
+      mode: '0640'
+
+  - name: Stop named service
+    systemd:
+      name: named
+      state: stopped
+
+  - name: Start named service
+    systemd:
+      name: named
+      state: started
+
+  - name: Auto enable named service at boot
+    command: systemctl enable named
+
+  - name: Edit etc/resolv.conf
+    template:
+      src: resolved.j2
+      dest: /etc/resolv.conf
+
+  - name: Change etc/named folder correct ownership and chmode
+    file:
+      path: /etc/named
+      owner: root
+      group: named
+      mode: '0750'
+
+  - name: Create zone file under etc/named
+    template:
+      src: zone.j2
+      dest: /etc/named/{{ hostname }}.{{ domain_name }}
+      owner: named
+      group: named
+      mode: '0644'
+
+  - name: Create reverse zone file under etc/named
+    template:
+      src: reverse_zone.j2
+      dest: /etc/named/reverse.{{ hostname }}.{{ domain_name }}
+      owner: named
+      group: named
+      mode: '0644'
+
+  - name: Restart named service
+    systemd:
+      name: named
+      state: reloaded
+

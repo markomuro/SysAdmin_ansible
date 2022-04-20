@@ -1,0 +1,374 @@
+- name: Modify zone file under etc/named
+  template:
+    src: zone.j2
+    dest: /etc/named/{{ hostname }}.{{ domain_name }}
+    owner: named
+    group: named
+    mode: '0644'
+
+- name: Restart named service
+  systemd:
+    name: named
+    state: reloaded
+
+- name: Install postfix
+  dnf:
+    name: postfix
+
+- name: Edit postfix config file
+  lineinfile:
+    path: /etc/postfix/main.cf
+    search_string: 'inet_protocols'
+    line: inet_protocols = ipv4
+
+- name: start and enable postfix service
+  systemd:
+    name: postfix
+    state: started
+    enabled: yes
+
+- name: open port 25 tcp
+  firewalld:
+    port: 25/tcp
+    permanent: true
+    state: enabled
+    immediate: yes
+
+- name: open port 143 tcp
+  firewalld:
+    port: 143/tcp
+    permanent: true
+    state: enabled
+    immediate: yes
+
+- name: set correct myhostname in postfix conf file
+  lineinfile:
+    path: /etc/postfix/main.cf
+    insertafter: '# INTERNET HOST AND DOMAIN NAMES'
+    line: myhostname = mail.{{ hostname }}.sa.cs.ut.ee
+    create: yes
+ 
+- name: set inet_interfaces in postfix conf file
+  lineinfile:
+    path: /etc/postfix/main.cf
+    search_string: 'inet_interfaces = localhost'
+    line: inet_interfaces = all
+
+- name: change outbound mail domain name in postfix conf file
+  lineinfile:
+    path: /etc/postfix/main.cf
+    insertbefore: '# RECEIVING MAIL'
+    line: myorigin = $mydomain
+    create: yes
+
+- name: modify mynetworks_style parameter
+  lineinfile:
+    path: /etc/postfix/main.cf
+    insertafter: '#mynetworks_style = host'
+    line: mynetworks_style = host
+    create: yes
+
+- name: restart postfix
+  systemd:
+    daemon_reload: yes
+    name: postfix
+    state: restarted
+    enabled: yes
+
+- name: Add mailuser as Linux user
+  user:
+    name: mailuser
+    password: "{{ password | password_hash('sha512') }}"
+
+- name: Run a command as the mailuser user
+  ansible.builtin.shell: 'echo -e "Subject: terminal email\n\nHello! \nthis is a e-mail sent with sendmail command from terminal\nby $USER" from $HOSTNAME | sendmail nagios@scoring.sa.cs.ut.ee'
+  become_user: mailuser
+
+- name: Install Dovecot
+  dnf:
+    name: dovecot
+
+- name: Change mail_debug to yes
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-logging.conf
+    insertafter: '#mail_debug = no'
+    line: mail_debug = yes
+    create: yes
+
+- name: Allow protocol imap and lmtp in dovecot main conf
+  lineinfile:
+    path: /etc/dovecot/dovecot.conf
+    insertafter: '# Protocols we want to be serving.'
+    line: protocols = imap lmtp
+    create: yes
+
+- name: start and enable Dovecot
+  systemd:
+    name: dovecot
+    state: started
+    enabled: yes
+
+- name: set auth mechanisms to plain and login
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-auth.conf
+    search_string: 'auth_mechanisms = plain'
+    line: auth_mechanisms = plain login
+    create: yes
+
+- name: change auth_username format
+  lineinfile: 
+    path: /etc/dovecot/conf.d/10-auth.conf
+    line: auth_username_format = %n
+    create: yes
+
+- name: change mail_location var
+  lineinfile: 
+    path: /etc/dovecot/conf.d/10-mail.conf
+    line: mail_location = maildir:~/mail
+    create: yes
+
+- name: change /var/mail group ownership to mail
+  file:
+    path: /var/mail
+    owner: root
+    group: mail
+    modification_time: preserve
+    access_time: preserve
+
+- name: give dovecot mail process ability to belong to mail group
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-mail.conf
+    line: mail_privileged_group = mail
+
+- name: append user dovecot to mail group
+  user:
+    name: dovecot
+    groups: mail
+    append: yes
+
+- name: enable automatic folder creation for dovecot mailboxes and add mailbox called Spam
+  template:
+    src: 15-mailboxes.j2
+    dest: /etc/dovecot/conf.d/15-mailboxes.conf
+    
+- name: install telnet
+  dnf:
+    name: telnet
+
+- name: enable plaintext auth
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-auth.conf
+    line: disable_plaintext_auth = no
+
+- name: disable ssl auth
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-ssl.conf
+    search_string: 'ssl = required'
+    line: ssl = no
+
+- name: open port 587 tcp
+  firewalld:
+    port: 587/tcp
+    permanent: true
+    state: enabled
+    immediate: yes
+
+- name: edit 10-master conf file for dovecot
+  template:
+    src: 10-master.j2
+    dest: /etc/dovecot/conf.d/10-master.conf
+
+- name: set mailbox transport to dovecot
+  lineinfile:
+    path: /etc/postfix/main.cf
+    line: mailbox_transport = lmtp:unix:private/dovecot-lmtp
+    state: present
+
+- name: set postfix to listen submission on port 587
+  template:
+    src: postfixmaster.j2
+    dest: /etc/postfix/master.cf
+
+- name: restart postfix
+  systemd:
+    daemon_reload: yes
+    name: postfix
+    state: restarted
+
+- name: restart Dovecot
+  systemd:
+    daemon_reload: yes
+    name: dovecot
+    state: restarted
+    enabled: yes
+
+- name: install epel-release + dnf-plugins-core
+  dnf:
+    name: 
+      - epel-release
+      - dnf-plugins-core
+    state: present
+
+- name: Upgrade all packages
+  dnf:
+    name: "*"
+    state: latest
+
+- name: enable powertools
+  command: dnf config-manager --set-enabled powertools
+
+- name: install packages needed for mailbox web service access
+  dnf:
+    name:
+      - make
+      - ImageMagick
+      - ImageMagick-devel
+      - ImageMagick-perl
+      - pcre-devel
+      - zlib
+      - zlib-devel
+      - libzip
+      - libzip-devel
+      - libmcrypt-devel
+      - php
+      - php-fpm
+      - php-devel
+      - php-pear
+      - php-cli
+      - php-gd
+      - php-curl
+      - php-xml
+      - php-mysqlnd
+      - php-mbstring
+      - php-intl
+      - php-ldap
+      - mariadb
+      - mariadb-server
+      - httpd
+
+- name: install imagick
+  command: pecl install imagick
+
+- name: install mcrypt
+  command: pecl install mcrypt
+
+- name: install zip
+  command: pecl install zip
+
+
+- name: create file for pecl package installation into php.d
+  template:
+    src: 20-imagick.j2
+    dest: /etc/php.d/20-imagick.ini
+
+- name: create file for pecl package installation into php.d
+  template:
+    src: 20-mcrypt.j2
+    dest: /etc/php.d/20-mcrypt.ini
+
+- name: create file for pecl package installation into php.d
+  template:
+    src: 20-zip.j2
+    dest: /etc/php.d/20-zip.ini
+
+- name: Create a new database with name 'roundcubemail'
+  community.mysql.mysql_db:
+    check_implicit_admin: yes
+    login_user: root
+    login_password: "{{ mariadb_root_pasw }}"
+    name: roundcubemail
+    state: present
+
+- name: Add new database user name with access to roundcubemail db
+  community.mysql.mysql_user:
+    check_implicit_admin: yes
+    login_user: root
+    login_password: "{{ mariadb_root_pasw }}"
+    state: present
+    name: roundcube
+    password: pass
+    priv: 
+      'roundcubemail.*': 'ALL,GRANT'
+    append_privs: yes
+
+- name: Unarchive a file that needs to be downloaded (added in 2.0)
+  ansible.builtin.unarchive:
+    src: https://github.com/roundcube/roundcubemail/releases/download/1.4.11/roundcubemail-1.4.11-complete.tar.gz
+    dest: /var/www/html/
+    remote_src: yes
+
+- name: check if roundcube folder already exists
+  stat:
+    path: '/var/www/html/roundcubemail'
+  register: file_data
+
+- name: rename roundcube folder
+  command: mv /var/www/html/roundcubemail-1.4.11 /var/www/html/roundcubemail
+  when: not file_data.stat.exists
+
+- name: set correct ownership for roundcubemail (apache)
+  file:
+    path: /var/www/html/roundcubemail
+    owner: apache
+    group: apache
+    recurse: yes
+
+- name: Sefcontext | this equates to 'chcon -t httpd_sys_rw_content_t /var/www/html/roundcubemail -R'
+  sefcontext:
+    target: '/var/www/html/roundcubemail(/.*)?'
+    setype: httpd_sys_rw_content_t
+    state: present
+
+- name: add mail virtualhost to httpd conf
+  template:
+    src: mailvirtualhost.j2
+    dest: /etc/httpd/conf.d/mail.{{ hostname }}.conf
+
+- name: create error log file for MX
+  file:
+    path: /var/log/httpd/mail.{{ hostname }}.sa.cs.ut.ee-error.log
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+- name: create custom log file for MX 
+  file:
+    path: /var/log/httpd/mail.{{ hostname }}.sa.cs.ut.ee-access.log combined
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+- name: create forensic log file for MX
+  file:
+    path: /var/log/httpd/mail.{{ hostname }}.sa.cs.ut.ee-forensic.log
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+- name: create log file folder for roundcube service
+  file:
+    path: /var/log/roundcube
+    state: directory
+    owner: apache
+    group: root
+    modification_time: preserve
+    access_time: preserve
+
+
+- name: restart httpd
+  systemd:
+    daemon_reload: yes
+    name: httpd
+    state: restarted
+    enabled: yes
+
+- name: restart php-fpm
+  systemd:
+    daemon_reload: yes
+    name: php-fpm
+    state: restarted
+    enabled: yes
+
+
+
+

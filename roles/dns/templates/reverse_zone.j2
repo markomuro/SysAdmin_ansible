@@ -1,0 +1,13 @@
+; BIND data file for reverse mapping DNS;
+
+$TTL 15M             ; Default expiration time for all resources
+@ IN SOA ns1.{{ hostname }}.sa.cs.ut.ee. root.{{ hostname }}.sa.cs.ut.ee.(
+     2012020101       ; Serial
+        15M       ; Refresh (15 minutes)
+        5M        ; Retry (5 minutes)
+        604800    ; Expire (7 days in seconds)
+        600 )     ; Negative Cache TTL
+@             IN      NS      ns1.{{ hostname }}.{{ domain_name }}.      ; Name Server
+{{ ip_last_octet }}           IN      PTR     ns1.{{ hostname }}.{{ domain_name }}.      ; 172.17.88.149 has name ns1.B55709.sa.cs.ut.ee
+
+

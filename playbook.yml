@@ -1,0 +1,27 @@
+- hosts: localhost
+  user: centos
+  become: yes
+  become_user: root
+  vars:
+    hostname: B55709
+    domain_name: sa.cs.ut.ee
+    reverse_ip: 88.17.172.in-addr.arpa
+    ext_ip: 172.17.88.149
+    ip_last_octet: 149
+    mariadb_root_pasw: Loader500
+    password: password
+
+  roles:
+   - { role: etais, tags: etais }
+   - { role: dns, tags: dns }
+   - { role: apache, tags: apache }
+   - { role: mail, tags: mail }
+   - { role: tls, tags: tls }
+
+  tasks:
+  - name: Testing this out
+    debug: msg="Hello from server!"
+  - name: UUID
+    debug: 
+      msg: "System {{ inventory_hostname }} has uuid {{ ansible_product_uuid }}"
+

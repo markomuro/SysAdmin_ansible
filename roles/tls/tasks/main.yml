@@ -1,0 +1,83 @@
+- name: open port 443 tcp
+  firewalld:
+    port: 443/tcp
+    permanent: true
+    state: enabled
+    immediate: yes
+
+- name: open port 465 tcp
+  firewalld:
+    port: 465/tcp
+    permanent: true
+    state: enabled
+    immediate: yes
+
+- name: open port 993 tcp
+  firewalld:
+    port: 993/tcp
+    permanent: true
+    state: enabled
+    immediate: yes
+
+- name: install mod_ssl
+  dnf:
+    name: mod_ssl
+
+- name: modify www virtual host file and include https
+  template:
+    src: webrootconf.j2
+    dest: /etc/httpd/conf.d/www.{{ hostname }}.conf 
+
+
+- name: modify proxy virtual host file and include https
+  template:
+    src: proxyconf.j2
+    dest: /etc/httpd/conf.d/proxy.{{ hostname }}.conf
+
+
+- name: modify wordpress virtual host file and include https
+  template:
+    src: wordpressconf.j2
+    dest: /etc/httpd/conf.d/wordpress.conf
+
+- name: modify postfix main.cf
+  template:
+    src: postfixmain.j2
+    dest: /etc/postfix/main.cf
+
+- name: modify postfix master conf
+  template:
+    src: postfixmaster.j2
+    dest: /etc/postfix/master.cf
+
+- name: install cyrus-sasl-plain
+  dnf:
+    name: cyrus-sasl-plain
+
+- name: enable ssl auth for dovecot
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-ssl.conf
+    search_string: 'ssl = no'
+    line: ssl = yes
+
+- name: restart postfix
+  systemd:
+    daemon_reload: yes
+    name: postfix
+    state: restarted
+    enabled: yes
+
+- name: restart Dovecot
+  systemd:
+    daemon_reload: yes
+    name: dovecot
+    state: restarted
+    enabled: yes
+
+- name: restart httpd
+  systemd:
+    daemon_reload: yes
+    name: httpd
+    state: restarted
+    enabled: yes
+
